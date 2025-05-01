@@ -16,7 +16,7 @@ export namespace Signal {
     startTracking,
     shallowPropagate,
   } = alien.createReactiveSystem({
-    update(node: Computed | State) {
+    update(node: State | Computed) {
       return node.update();
     },
     notify(node: subtle.Watcher) {
@@ -26,15 +26,7 @@ export namespace Signal {
         queuedEffects[queuedEffectsLength++] = node;
       }
     },
-    unwatched(node) {
-      let toRemove = node.deps;
-      if (toRemove !== undefined) {
-        do {
-          toRemove = unlink(toRemove, node);
-        } while (toRemove !== undefined);
-        node.flags |= alien.ReactiveFlags.Dirty;
-      }
-    },
+    unwatched() { },
   });
   const queuedEffects: subtle.Watcher[] = [];
 
@@ -269,7 +261,7 @@ export namespace Signal {
       deps: alien.Link | undefined = undefined;
       depsTail: alien.Link | undefined = undefined;
       flags = alien.ReactiveFlags.Watching;
-      watchList = new Set<AnySignal>();
+      watchList = new Map<AnySignal, alien.Link>();
 
       constructor(private fn: () => void) { }
 
@@ -288,28 +280,22 @@ export namespace Signal {
           if (this.watchList.has(signal)) {
             continue;
           }
-          this.watchList.add(signal);
           link(signal, this);
+          this.watchList.set(signal, this.depsTail!);
           signal.onWatched();
         }
       }
 
       unwatch(...signals: AnySignal[]): void {
         for (const signal of signals) {
-          if (!this.watchList.has(signal)) {
+          const link = this.watchList.get(signal);
+          if (link === undefined) {
             continue;
           }
+          unlink(link, this);
           this.watchList.delete(signal);
           signal.onUnwatched();
         }
-        startTracking(this);
-        for (let _link = this.deps; _link !== undefined; _link = _link.nextDep) {
-          const dep = _link.dep as AnySignal;
-          if (this.watchList.has(dep)) {
-            link(dep, this);
-          }
-        }
-        endTracking(this);
       }
 
       getPending() {
