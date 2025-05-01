@@ -3,40 +3,56 @@ import * as alien from 'alien-signals';
 export namespace Signal {
   const WATCHER_PLACEHOLDER = Symbol('watcher') as any;
 
+  const enum EffectFlags {
+    Queued = 1 << 6,
+  }
+
   const {
     link,
-    warming,
-    cooling,
+    unlink,
     propagate,
     checkDirty,
     endTracking,
     startTracking,
-    processEffectNotifications,
+    shallowPropagate,
   } = alien.createReactiveSystem({
-    computed: {
-      update(computed: Computed) {
-        return computed.update();
-      },
-      onUnwatched(computed) {
-        cooling(computed);
-      },
+    update(node: Computed | State) {
+      return node.update();
     },
-    effect: {
-      notify(watcher: subtle.Watcher) {
-        if (watcher.flags & alien.SubscriberFlags.Dirty) {
-          watcher.run();
-        }
-      },
+    notify(node: subtle.Watcher) {
+      const flags = node.flags;
+      if (!(flags & EffectFlags.Queued)) {
+        node.flags = flags | EffectFlags.Queued;
+        queuedEffects[queuedEffectsLength++] = node;
+      }
+    },
+    unwatched(node) {
+      let toRemove = node.deps;
+      if (toRemove !== undefined) {
+        do {
+          toRemove = unlink(toRemove, node);
+        } while (toRemove !== undefined);
+        node.flags |= alien.ReactiveFlags.Dirty;
+      }
     },
   });
-  const nursery: alien.Subscriber = {
-    flags: alien.SubscriberFlags.None,
-    deps: undefined,
-    depsTail: undefined,
-  };
+  const queuedEffects: subtle.Watcher[] = [];
 
-  let triggingCooling = false;
-  let activeSub: alien.Subscriber | undefined;
+  let notifyIndex = 0;
+  let queuedEffectsLength = 0;
+  let activeSub: alien.ReactiveNode | undefined;
+
+  function flush(): void {
+    while (notifyIndex < queuedEffectsLength) {
+      const effect = queuedEffects[notifyIndex];
+      // @ts-expect-error
+      queuedEffects[notifyIndex++] = undefined;
+      effect.flags &= ~EffectFlags.Queued;
+      effect.run();
+    }
+    notifyIndex = 0;
+    queuedEffectsLength = 0;
+  }
 
   export function untrack<T>(fn: () => T) {
     const prevSub = activeSub;
@@ -48,16 +64,18 @@ export namespace Signal {
     }
   }
 
-  export class State<T = any> implements alien.Dependency {
+  export class State<T = any> implements alien.ReactiveNode {
     subs: alien.Link | undefined = undefined;
     subsTail: alien.Link | undefined = undefined;
-    version = 0;
+    flags: alien.ReactiveFlags = alien.ReactiveFlags.Mutable;
     watchCount = 0;
+    previousValue: T;
 
     constructor(
-      private currentValue: T,
+      private value: T,
       private options?: Options<T>,
     ) {
+      this.previousValue = value;
       if (options?.equals !== undefined) {
         this.equals = options.equals;
       }
@@ -79,47 +97,62 @@ export namespace Signal {
       }
     }
 
+    update() {
+      this.flags &= ~alien.ReactiveFlags.Dirty;
+      return !this.equals(this.previousValue, this.previousValue = this.value);
+    }
+
     get() {
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot read from state inside watcher');
       }
+      if (this.flags & alien.ReactiveFlags.Dirty) {
+        if (this.update()) {
+          const subs = this.subs;
+          if (subs !== undefined) {
+            shallowPropagate(subs);
+          }
+        }
+      }
       if (activeSub !== undefined) {
-        if (link(this, activeSub)) {
-          const newSub = this.subsTail!.sub;
+        const lastLink = this.subsTail;
+        link(this, activeSub);
+        const newLink = this.subsTail!;
+        if (newLink !== lastLink) {
+          const newSub = newLink.sub;
           if (newSub instanceof Computed && newSub.watchCount) {
             this.onWatched();
           }
         }
       }
-      return this.currentValue;
+      return this.value;
     }
 
     set(value: T): void {
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot write to state inside watcher');
       }
-      if (!this.equals(this.currentValue, value)) {
-        this.version++;
-        this.currentValue = value;
+      if (!this.equals(this.value, value)) {
+        this.value = value;
+        this.flags = alien.ReactiveFlags.Mutable | alien.ReactiveFlags.Dirty;
         const subs = this.subs;
         if (subs !== undefined) {
           propagate(subs);
-          processEffectNotifications();
+          flush();
         }
       }
     }
   }
 
-  export class Computed<T = any> implements alien.Dependency, alien.Subscriber {
+  export class Computed<T = any> implements alien.ReactiveNode {
     subs: alien.Link | undefined = undefined;
     subsTail: alien.Link | undefined = undefined;
     deps: alien.Link | undefined = undefined;
     depsTail: alien.Link | undefined = undefined;
-    flags = alien.SubscriberFlags.Computed | alien.SubscriberFlags.Dirty;
+    flags = alien.ReactiveFlags.Mutable | alien.ReactiveFlags.Dirty;
     isError = true;
-    version = 0;
     watchCount = 0;
-    currentValue: T | undefined = undefined;
+    value: T | undefined = undefined;
 
     constructor(
       private getter: () => T,
@@ -159,59 +192,56 @@ export namespace Signal {
         throw new Error('Cannot read from computed inside watcher');
       }
       let flags = this.flags;
-      if (flags & alien.SubscriberFlags.Tracking) {
+      if (flags & alien.ReactiveFlags.RecursedCheck) {
         throw new Error('Cycles detected');
       }
-      if (flags & alien.SubscriberFlags.Cold) {
-        warming(this);
-        flags |= alien.SubscriberFlags.Pending;
-      }
-      if (flags & alien.SubscriberFlags.Dirty) {
-        this.update();
-      } else if (flags & alien.SubscriberFlags.Pending) {
-        if (checkDirty(this.deps!)) {
-          this.update();
-        } else {
-          this.flags &= ~alien.SubscriberFlags.Pending;
+      if (
+        flags & alien.ReactiveFlags.Dirty
+        || (flags & alien.ReactiveFlags.Pending && checkDirty(this.deps!, this))
+      ) {
+        if (this.update()) {
+          const subs = this.subs;
+          if (subs !== undefined) {
+            shallowPropagate(subs);
+          }
         }
+      } else if (flags & alien.ReactiveFlags.Pending) {
+        this.flags = flags & ~alien.ReactiveFlags.Pending;
       }
       if (activeSub !== undefined) {
-        const newSub = link(this, activeSub)?.sub;
-        if (newSub instanceof Computed && newSub.watchCount) {
-          this.onWatched();
-        }
-      } else if (this.subs === undefined) {
-        link(this, nursery);
-        if (!triggingCooling) {
-          triggingCooling = true;
-          triggerCooling();
+        const lastLink = this.subsTail;
+        link(this, activeSub);
+        const newLink = this.subsTail!;
+        if (newLink !== lastLink) {
+          const newSub = newLink.sub;
+          if (newSub instanceof Computed && newSub.watchCount) {
+            this.onWatched();
+          }
         }
       }
       if (this.isError) {
-        throw this.currentValue;
+        throw this.value;
       }
-      return this.currentValue!;
+      return this.value!;
     }
 
     update(): boolean {
       const prevSub = activeSub;
       activeSub = this;
       startTracking(this);
-      const oldValue = this.currentValue;
+      const oldValue = this.value;
       try {
         const newValue = this.getter();
         if (this.isError || !this.equals(oldValue!, newValue)) {
           this.isError = false;
-          this.version++;
-          this.currentValue = newValue;
+          this.value = newValue;
           return true;
         }
         return false;
       } catch (err) {
         if (!this.isError || !this.equals(oldValue!, err as any)) {
           this.isError = true;
-          this.version++;
-          this.currentValue = err as any;
+          this.value = err as any;
           return true;
         }
         return false;
@@ -232,20 +262,13 @@ export namespace Signal {
     }
   }
 
-  async function triggerCooling() {
-    await Promise.resolve(); // TODO: Confirm the scheduling logic
-    triggingCooling = false;
-    startTracking(nursery);
-    endTracking(nursery);
-  }
-
   type AnySignal<T = any> = State<T> | Computed<T>;
 
   export namespace subtle {
-    export class Watcher implements alien.Subscriber {
+    export class Watcher implements alien.ReactiveNode {
       deps: alien.Link | undefined = undefined;
       depsTail: alien.Link | undefined = undefined;
-      flags = alien.SubscriberFlags.Effect;
+      flags = alien.ReactiveFlags.Watching;
       watchList = new Set<AnySignal>();
 
       constructor(private fn: () => void) { }
@@ -295,7 +318,7 @@ export namespace Signal {
           const source = link.dep;
           if (
             source instanceof Computed &&
-            source.flags & (alien.SubscriberFlags.Dirty | alien.SubscriberFlags.Pending)
+            source.flags & (alien.ReactiveFlags.Dirty | alien.ReactiveFlags.Pending)
           ) {
             arr.push(link.dep as AnySignal);
           }
@@ -316,7 +339,7 @@ export namespace Signal {
       return arr;
     }
 
-    export function introspectSources(signal: alien.Subscriber) {
+    export function introspectSources(signal: alien.ReactiveNode) {
       const arr: AnySignal[] = [];
       for (let link = signal.deps; link !== undefined; link = link.nextDep) {
         arr.push(link.dep as AnySignal);
