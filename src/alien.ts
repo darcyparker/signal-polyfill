@@ -303,8 +303,8 @@ export namespace Signal {
         for (let link = this.deps; link !== undefined; link = link.nextDep) {
           const source = link.dep;
           if (
-            source instanceof Computed &&
-            source.flags & (alien.ReactiveFlags.Dirty | alien.ReactiveFlags.Pending)
+            source.flags & (alien.ReactiveFlags.Dirty | alien.ReactiveFlags.Pending) &&
+            source instanceof Computed
           ) {
             arr.push(link.dep as AnySignal);
           }
