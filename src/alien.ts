@@ -26,7 +26,15 @@ export namespace Signal {
         queuedEffects[queuedEffectsLength++] = node;
       }
     },
-    unwatched() { },
+    unwatched(node) {
+      let toRemove = node.deps;
+      if (toRemove !== undefined) {
+        do {
+          toRemove = unlink(toRemove, node);
+        } while (toRemove !== undefined);
+        node.flags |= alien.ReactiveFlags.Dirty;
+      }
+    },
   });
   const queuedEffects: subtle.Watcher[] = [];
 
@@ -280,9 +288,9 @@ export namespace Signal {
           if (this.watchList.has(signal)) {
             continue;
           }
+          signal.onWatched();
           link(signal, this);
           this.watchList.set(signal, this.depsTail!);
-          signal.onWatched();
         }
       }
 
@@ -292,9 +300,9 @@ export namespace Signal {
           if (link === undefined) {
             continue;
           }
+          signal.onUnwatched();
           unlink(link, this);
           this.watchList.delete(signal);
-          signal.onUnwatched();
         }
       }
 
