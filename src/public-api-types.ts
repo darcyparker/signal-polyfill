@@ -2,8 +2,8 @@
  * The purpose of these tests is to make sure the types are exposed how we expect,
  * and that we double-check what we're exposing as public API
  */
-import { expectTypeOf } from 'expect-type';
-import { Signal } from './alien.ts';
+import {expectTypeOf} from 'expect-type';
+import {Signal} from './alien.ts';
 
 /**
  * Top-Level
@@ -17,13 +17,13 @@ expectTypeOf<keyof typeof Signal>().toEqualTypeOf<
  */
 expectTypeOf(Signal.State<number>).toBeConstructibleWith(1);
 expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, {});
-expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, { equals: (a, b) => true });
-expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, { [Signal.subtle.watched]: () => true });
+expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, {equals: (a, b) => true});
+expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, {[Signal.subtle.watched]: () => true});
 expectTypeOf(Signal.State<number>).toBeConstructibleWith(1, {
   [Signal.subtle.unwatched]: () => true,
 });
 expectTypeOf(Signal.Computed<number>).toBeConstructibleWith(() => 2);
-expectTypeOf(Signal.Computed<number>).toBeConstructibleWith(() => 1, { equals: (a, b) => true });
+expectTypeOf(Signal.Computed<number>).toBeConstructibleWith(() => 1, {equals: (a, b) => true});
 expectTypeOf(Signal.Computed<number>).toBeConstructibleWith(() => 1, {
   [Signal.subtle.watched]: () => true,
 });
@@ -83,9 +83,7 @@ expectTypeOf<keyof typeof Signal.subtle>().toEqualTypeOf<
   | 'unwatched'
 >();
 
-expectTypeOf<keyof Signal.subtle.Watcher>().toEqualTypeOf<
-  'watch' | 'unwatch' | 'getPending'
->();
+expectTypeOf<keyof Signal.subtle.Watcher>().toEqualTypeOf<'watch' | 'unwatch' | 'getPending'>();
 
 /**
  * Inference works

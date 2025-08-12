@@ -4,7 +4,7 @@ import {
   type ReactiveNode,
   type Link,
 } from 'alien-signals/system';
-import { defaultEquals } from './equality';
+import {defaultEquals} from './equality';
 
 export namespace Signal {
   export let isState: (s: any) => s is State<any>,
@@ -17,35 +17,28 @@ export namespace Signal {
     Queued = 1 << 6,
   }
 
-  const {
-    link,
-    unlink,
-    propagate,
-    checkDirty,
-    endTracking,
-    startTracking,
-    shallowPropagate,
-  } = createReactiveSystem({
-    update(node: _Computed) {
-      return node.update();
-    },
-    notify(node: _Watcher) {
-      const flags = node.flags;
-      if (!(flags & EffectFlags.Queued)) {
-        node.flags = flags | EffectFlags.Queued;
-        queuedEffects[queuedEffectsLength++] = node;
-      }
-    },
-    unwatched(node) {
-      let toRemove = node.deps;
-      if (toRemove !== undefined) {
-        do {
-          toRemove = unlink(toRemove, node);
-        } while (toRemove !== undefined);
-        node.flags |= ReactiveFlags.Dirty;
-      }
-    },
-  });
+  const {link, unlink, propagate, checkDirty, endTracking, startTracking, shallowPropagate} =
+    createReactiveSystem({
+      update(node: _Computed) {
+        return node.update();
+      },
+      notify(node: _Watcher) {
+        const flags = node.flags;
+        if (!(flags & EffectFlags.Queued)) {
+          node.flags = flags | EffectFlags.Queued;
+          queuedEffects[queuedEffectsLength++] = node;
+        }
+      },
+      unwatched(node) {
+        let toRemove = node.deps;
+        if (toRemove !== undefined) {
+          do {
+            toRemove = unlink(toRemove, node);
+          } while (toRemove !== undefined);
+          node.flags |= ReactiveFlags.Dirty;
+        }
+      },
+    });
   const queuedEffects: _Watcher[] = [];
 
   let notifyIndex = 0;
@@ -71,9 +64,9 @@ export namespace Signal {
     watchCount = 0;
     previousValue: T;
 
-    #brand() { }
+    #brand() {}
     static {
-      isState = (s) => typeof s === 'object' && #brand in s;
+      isState = ((s) => typeof s === 'object' && #brand in s) as typeof isState;
     }
 
     constructor(
@@ -148,10 +141,7 @@ export namespace Signal {
   }
 
   export const State = _State as {
-    new <T>(
-      value: T,
-      options?: Options<T>,
-    ): State<T>
+    new <T>(value: T, options?: Options<T>): State<T>;
   };
 
   class _Computed<T = any> implements ReactiveNode {
@@ -164,9 +154,9 @@ export namespace Signal {
     watchCount = 0;
     value: T | undefined = undefined;
 
-    #brand() { }
+    #brand() {}
     static {
-      isComputed = (c: any) => typeof c === 'object' && #brand in c;
+      isComputed = ((c: any) => typeof c === 'object' && #brand in c) as typeof isComputed;
     }
 
     constructor(
@@ -214,8 +204,8 @@ export namespace Signal {
         throw new Error('Cycles detected');
       }
       if (
-        flags & ReactiveFlags.Dirty
-        || (flags & ReactiveFlags.Pending && checkDirty(this.deps!, this))
+        flags & ReactiveFlags.Dirty ||
+        (flags & ReactiveFlags.Pending && checkDirty(this.deps!, this))
       ) {
         if (this.update()) {
           const subs = this.subs;
@@ -285,10 +275,7 @@ export namespace Signal {
   }
 
   export const Computed = _Computed as {
-    new <T>(
-      getter: () => T,
-      options?: Options<T>,
-    ): Computed<T>
+    new <T>(getter: () => T, options?: Options<T>): Computed<T>;
   };
 
   class _Watcher implements ReactiveNode {
@@ -297,12 +284,12 @@ export namespace Signal {
     flags = ReactiveFlags.Watching;
     watchList = new Map<_AnySignal, Link>();
 
-    #brand() { }
+    #brand() {}
     static {
       isWatcher = (w: any): w is _Watcher => #brand in w;
     }
 
-    constructor(private fn: () => void) { }
+    constructor(private fn: () => void) {}
 
     run() {
       const prevSub = activeSub;
@@ -394,11 +381,11 @@ export namespace Signal {
     export interface Watcher {
       watch(...signals: AnySignal[]): void;
       unwatch(...signals: AnySignal[]): void;
-      getPending(): AnySignal<any>[]
+      getPending(): AnySignal<any>[];
     }
 
     export const Watcher = _Watcher as {
-      new(fn: () => void): Watcher
+      new (fn: () => void): Watcher;
     };
 
     export function hasSinks(signal: AnySignal) {
