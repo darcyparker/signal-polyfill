@@ -1,5 +1,5 @@
 import {describe, expect, it, vi} from 'vitest';
-import {Signal} from '../../src/alien.js';
+import {Signal} from '../../src';
 
 describe('Custom equality', () => {
   it('works for State', () => {

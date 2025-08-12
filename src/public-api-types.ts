@@ -3,7 +3,7 @@
  * and that we double-check what we're exposing as public API
  */
 import {expectTypeOf} from 'expect-type';
-import {Signal} from './alien.ts';
+import {Signal} from '.';
 
 /**
  * Top-Level
