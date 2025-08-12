@@ -1,8 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {Signal} from '../../src/alien.js';
 
-const isAlien = true;
-
 describe('Prohibited contexts', () => {
   it('allows writes during computed', () => {
     const s = new Signal.State(1);
@@ -10,15 +8,8 @@ describe('Prohibited contexts', () => {
     expect(c.get()).toBe(2);
     expect(s.get()).toBe(2);
 
-    if (isAlien) {
-      expect(c.get()).toBe(3);
-      expect(s.get()).toBe(3);
-    } else {
-      // Note: c is marked clean in this case, even though re-evaluating it
-      // would cause it to change value (due to the set inside of it).
-      expect(c.get()).toBe(2);
-      expect(s.get()).toBe(2);
-    }
+    expect(c.get()).toBe(3);
+    expect(s.get()).toBe(3);
 
     s.set(3);
 
