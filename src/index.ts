@@ -106,7 +106,7 @@ export namespace Signal {
         const newLink = this.subsTail!;
         if (newLink !== lastLink) {
           const newSub = newLink.sub;
-          if (newSub instanceof _Computed && newSub.watchCount) {
+          if (isComputed(newSub) && (newSub as _Computed).watchCount) {
             this.onWatched();
           }
         }
@@ -220,7 +220,7 @@ export namespace Signal {
         const newLink = this.subsTail!;
         if (newLink !== lastLink) {
           const newSub = newLink.sub;
-          if (newSub instanceof _Computed && newSub.watchCount) {
+          if (isComputed(newSub) && (newSub as _Computed).watchCount) {
             this.onWatched();
           }
         }
@@ -348,10 +348,7 @@ export namespace Signal {
       const arr: _AnySignal[] = [];
       for (let link = this.deps; link !== undefined; link = link.nextDep) {
         const source = link.dep;
-        if (
-          source.flags & (ReactiveFlags.Dirty | ReactiveFlags.Pending) &&
-          source instanceof _Computed
-        ) {
+        if (source.flags & (ReactiveFlags.Dirty | ReactiveFlags.Pending) && isComputed(source)) {
           arr.push(link.dep as _AnySignal);
         }
       }
