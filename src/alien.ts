@@ -307,6 +307,7 @@ export namespace Signal {
     run() {
       const prevSub = activeSub;
       activeSub = WATCHER_PLACEHOLDER;
+      this.flags &= ~(ReactiveFlags.Dirty | ReactiveFlags.Pending);
       try {
         this.fn();
       } finally {
