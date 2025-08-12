@@ -1,4 +1,9 @@
-import * as alien from 'alien-signals';
+import {
+  ReactiveFlags,
+  createReactiveSystem,
+  type ReactiveNode,
+  type Link,
+} from 'alien-signals/system';
 
 export namespace Signal {
   const WATCHER_PLACEHOLDER = Symbol('watcher') as any;
@@ -15,7 +20,7 @@ export namespace Signal {
     endTracking,
     startTracking,
     shallowPropagate,
-  } = alien.createReactiveSystem({
+  } = createReactiveSystem({
     update(node: State | Computed) {
       return node.update();
     },
@@ -32,7 +37,7 @@ export namespace Signal {
         do {
           toRemove = unlink(toRemove, node);
         } while (toRemove !== undefined);
-        node.flags |= alien.ReactiveFlags.Dirty;
+        node.flags |= ReactiveFlags.Dirty;
       }
     },
   });
@@ -40,7 +45,7 @@ export namespace Signal {
 
   let notifyIndex = 0;
   let queuedEffectsLength = 0;
-  let activeSub: alien.ReactiveNode | undefined;
+  let activeSub: ReactiveNode | undefined;
 
   function flush(): void {
     while (notifyIndex < queuedEffectsLength) {
@@ -64,10 +69,10 @@ export namespace Signal {
     }
   }
 
-  export class State<T = any> implements alien.ReactiveNode {
-    subs: alien.Link | undefined = undefined;
-    subsTail: alien.Link | undefined = undefined;
-    flags: alien.ReactiveFlags = alien.ReactiveFlags.Mutable;
+  export class State<T = any> implements ReactiveNode {
+    subs: Link | undefined = undefined;
+    subsTail: Link | undefined = undefined;
+    flags: ReactiveFlags = ReactiveFlags.Mutable;
     watchCount = 0;
     previousValue: T;
 
@@ -98,7 +103,7 @@ export namespace Signal {
     }
 
     update() {
-      this.flags &= ~alien.ReactiveFlags.Dirty;
+      this.flags &= ~ReactiveFlags.Dirty;
       return !this.equals(this.previousValue, this.previousValue = this.value);
     }
 
@@ -106,7 +111,7 @@ export namespace Signal {
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot read from state inside watcher');
       }
-      if (this.flags & alien.ReactiveFlags.Dirty) {
+      if (this.flags & ReactiveFlags.Dirty) {
         if (this.update()) {
           const subs = this.subs;
           if (subs !== undefined) {
@@ -134,7 +139,7 @@ export namespace Signal {
       }
       if (!this.equals(this.value, value)) {
         this.value = value;
-        this.flags = alien.ReactiveFlags.Mutable | alien.ReactiveFlags.Dirty;
+        this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
         const subs = this.subs;
         if (subs !== undefined) {
           propagate(subs);
@@ -144,12 +149,12 @@ export namespace Signal {
     }
   }
 
-  export class Computed<T = any> implements alien.ReactiveNode {
-    subs: alien.Link | undefined = undefined;
-    subsTail: alien.Link | undefined = undefined;
-    deps: alien.Link | undefined = undefined;
-    depsTail: alien.Link | undefined = undefined;
-    flags = alien.ReactiveFlags.Mutable | alien.ReactiveFlags.Dirty;
+  export class Computed<T = any> implements ReactiveNode {
+    subs: Link | undefined = undefined;
+    subsTail: Link | undefined = undefined;
+    deps: Link | undefined = undefined;
+    depsTail: Link | undefined = undefined;
+    flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
     isError = true;
     watchCount = 0;
     value: T | undefined = undefined;
@@ -192,12 +197,12 @@ export namespace Signal {
         throw new Error('Cannot read from computed inside watcher');
       }
       let flags = this.flags;
-      if (flags & alien.ReactiveFlags.RecursedCheck) {
+      if (flags & ReactiveFlags.RecursedCheck) {
         throw new Error('Cycles detected');
       }
       if (
-        flags & alien.ReactiveFlags.Dirty
-        || (flags & alien.ReactiveFlags.Pending && checkDirty(this.deps!, this))
+        flags & ReactiveFlags.Dirty
+        || (flags & ReactiveFlags.Pending && checkDirty(this.deps!, this))
       ) {
         if (this.update()) {
           const subs = this.subs;
@@ -205,8 +210,8 @@ export namespace Signal {
             shallowPropagate(subs);
           }
         }
-      } else if (flags & alien.ReactiveFlags.Pending) {
-        this.flags = flags & ~alien.ReactiveFlags.Pending;
+      } else if (flags & ReactiveFlags.Pending) {
+        this.flags = flags & ~ReactiveFlags.Pending;
       }
       if (activeSub !== undefined) {
         const lastLink = this.subsTail;
@@ -265,11 +270,11 @@ export namespace Signal {
   type AnySignal<T = any> = State<T> | Computed<T>;
 
   export namespace subtle {
-    export class Watcher implements alien.ReactiveNode {
-      deps: alien.Link | undefined = undefined;
-      depsTail: alien.Link | undefined = undefined;
-      flags = alien.ReactiveFlags.Watching;
-      watchList = new Map<AnySignal, alien.Link>();
+    export class Watcher implements ReactiveNode {
+      deps: Link | undefined = undefined;
+      depsTail: Link | undefined = undefined;
+      flags = ReactiveFlags.Watching;
+      watchList = new Map<AnySignal, Link>();
 
       constructor(private fn: () => void) { }
 
@@ -311,7 +316,7 @@ export namespace Signal {
         for (let link = this.deps; link !== undefined; link = link.nextDep) {
           const source = link.dep;
           if (
-            source.flags & (alien.ReactiveFlags.Dirty | alien.ReactiveFlags.Pending) &&
+            source.flags & (ReactiveFlags.Dirty | ReactiveFlags.Pending) &&
             source instanceof Computed
           ) {
             arr.push(link.dep as AnySignal);
@@ -333,7 +338,7 @@ export namespace Signal {
       return arr;
     }
 
-    export function introspectSources(signal: alien.ReactiveNode) {
+    export function introspectSources(signal: ReactiveNode) {
       const arr: AnySignal[] = [];
       for (let link = signal.deps; link !== undefined; link = link.nextDep) {
         arr.push(link.dep as AnySignal);

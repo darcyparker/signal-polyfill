@@ -3,7 +3,7 @@
     "outDir": "dist",
     "rootDir": "src",
     "pretty": true,
-    "moduleResolution": "node",
+    "moduleResolution": "nodenext",
     "module": "ESNext",
     "target": "ES2022",
     "sourceMap": true,
