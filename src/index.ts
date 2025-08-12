@@ -38,7 +38,7 @@ export namespace Signal {
         }
       },
     });
-  const queuedEffects: _Watcher[] = [];
+  const queuedEffects: (_Watcher | undefined)[] = [];
 
   let notifyIndex = 0;
   let queuedEffectsLength = 0;
@@ -46,8 +46,7 @@ export namespace Signal {
 
   function flush(): void {
     while (notifyIndex < queuedEffectsLength) {
-      const effect = queuedEffects[notifyIndex];
-      // @ts-expect-error
+      const effect = queuedEffects[notifyIndex]!;
       queuedEffects[notifyIndex++] = undefined;
       effect.flags &= ~EffectFlags.Queued;
       effect.run();
