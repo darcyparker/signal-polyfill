@@ -26,7 +26,7 @@ export namespace Signal {
     startTracking,
     shallowPropagate,
   } = createReactiveSystem({
-    update(node: _State | _Computed) {
+    update(node: _Computed) {
       return node.update();
     },
     notify(node: _Watcher) {
@@ -67,7 +67,7 @@ export namespace Signal {
   class _State<T = any> implements ReactiveNode {
     subs: Link | undefined = undefined;
     subsTail: Link | undefined = undefined;
-    flags: ReactiveFlags = ReactiveFlags.Mutable;
+    flags: ReactiveFlags = ReactiveFlags.None;
     watchCount = 0;
     previousValue: T;
 
@@ -102,25 +102,12 @@ export namespace Signal {
       }
     }
 
-    update() {
-      this.flags &= ~ReactiveFlags.Dirty;
-      return !this.equals(this.previousValue, this.previousValue = this.value);
-    }
-
     get() {
       if (!isState(this)) {
         throw new TypeError('Wrong receiver type for Signal.State.prototype.get');
       }
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot read from state inside watcher');
-      }
-      if (this.flags & ReactiveFlags.Dirty) {
-        if (this.update()) {
-          const subs = this.subs;
-          if (subs !== undefined) {
-            shallowPropagate(subs);
-          }
-        }
       }
       if (activeSub !== undefined) {
         const lastLink = this.subsTail;
@@ -145,10 +132,10 @@ export namespace Signal {
       }
       if (!this.equals(this.value, value)) {
         this.value = value;
-        this.flags = ReactiveFlags.Mutable | ReactiveFlags.Dirty;
         const subs = this.subs;
         if (subs !== undefined) {
           propagate(subs);
+          shallowPropagate(subs);
           flush();
         }
       }
