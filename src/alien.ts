@@ -4,6 +4,7 @@ import {
   type ReactiveNode,
   type Link,
 } from 'alien-signals/system';
+import { defaultEquals } from './equality';
 
 export namespace Signal {
   export let isState: (s: any) => boolean,
@@ -63,16 +64,6 @@ export namespace Signal {
     queuedEffectsLength = 0;
   }
 
-  export function untrack<T>(fn: () => T) {
-    const prevSub = activeSub;
-    activeSub = undefined;
-    try {
-      return fn();
-    } finally {
-      activeSub = prevSub;
-    }
-  }
-
   export class State<T = any> implements ReactiveNode {
     subs: Link | undefined = undefined;
     subsTail: Link | undefined = undefined;
@@ -96,7 +87,7 @@ export namespace Signal {
     }
 
     equals(t: T, t2: T): boolean {
-      return Object.is(t, t2);
+      return defaultEquals(t, t2);
     }
 
     onWatched() {
@@ -189,7 +180,7 @@ export namespace Signal {
     }
 
     equals(t: T, t2: T): boolean {
-      return Object.is(t, t2);
+      return defaultEquals(t, t2);
     }
 
     onWatched() {
@@ -294,6 +285,16 @@ export namespace Signal {
   type AnySink = Computed<any> | subtle.Watcher;
 
   export namespace subtle {
+    export function untrack<T>(fn: () => T) {
+      const prevSub = activeSub;
+      activeSub = undefined;
+      try {
+        return fn();
+      } finally {
+        activeSub = prevSub;
+      }
+    }
+
     export class Watcher implements ReactiveNode {
       deps: Link | undefined = undefined;
       depsTail: Link | undefined = undefined;
