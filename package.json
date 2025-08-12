@@ -44,7 +44,7 @@
     "webdriverio": "^8.36.1"
   },
   "dependencies": {
-    "alien-signals": "^2.0.1"
+    "alien-signals": "^2.0.6"
   },
   "volta": {
     "node": "22.0.0",
