@@ -6,6 +6,10 @@ import {
 } from 'alien-signals/system';
 
 export namespace Signal {
+  export let isState: (s: any) => boolean,
+    isComputed: (s: any) => boolean,
+    isWatcher: (s: any) => boolean;
+
   const WATCHER_PLACEHOLDER = Symbol('watcher') as any;
 
   const enum EffectFlags {
@@ -76,6 +80,11 @@ export namespace Signal {
     watchCount = 0;
     previousValue: T;
 
+    #brand() { }
+    static {
+      isState = (s) => typeof s === 'object' && #brand in s;
+    }
+
     constructor(
       private value: T,
       private options?: Options<T>,
@@ -108,6 +117,9 @@ export namespace Signal {
     }
 
     get() {
+      if (!isState(this)) {
+        throw new TypeError('Wrong receiver type for Signal.State.prototype.get');
+      }
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot read from state inside watcher');
       }
@@ -134,6 +146,9 @@ export namespace Signal {
     }
 
     set(value: T): void {
+      if (!isState(this)) {
+        throw new TypeError('Wrong receiver type for Signal.State.prototype.set');
+      }
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot write to state inside watcher');
       }
@@ -158,6 +173,11 @@ export namespace Signal {
     isError = true;
     watchCount = 0;
     value: T | undefined = undefined;
+
+    #brand() { }
+    static {
+      isComputed = (c: any) => typeof c === 'object' && #brand in c;
+    }
 
     constructor(
       private getter: () => T,
@@ -193,6 +213,9 @@ export namespace Signal {
     }
 
     get() {
+      if (!isComputed(this)) {
+        throw new TypeError('Wrong receiver type for Signal.Computed.prototype.get');
+      }
       if (activeSub === WATCHER_PLACEHOLDER) {
         throw new Error('Cannot read from computed inside watcher');
       }
@@ -268,6 +291,7 @@ export namespace Signal {
   }
 
   type AnySignal<T = any> = State<T> | Computed<T>;
+  type AnySink = Computed<any> | subtle.Watcher;
 
   export namespace subtle {
     export class Watcher implements ReactiveNode {
@@ -275,6 +299,11 @@ export namespace Signal {
       depsTail: Link | undefined = undefined;
       flags = ReactiveFlags.Watching;
       watchList = new Map<AnySignal, Link>();
+
+      #brand() { }
+      static {
+        isWatcher = (w: any): w is Watcher => #brand in w;
+      }
 
       constructor(private fn: () => void) { }
 
@@ -288,7 +317,20 @@ export namespace Signal {
         }
       }
 
+      #assertSignals(signals: AnySignal[]): void {
+        for (const signal of signals) {
+          if (!isComputed(signal) && !isState(signal)) {
+            throw new TypeError('Called watch/unwatch without a Computed or State argument');
+          }
+        }
+      }
+
       watch(...signals: AnySignal[]): void {
+        if (!isWatcher(this)) {
+          throw new TypeError('Called watch without Watcher receiver');
+        }
+        this.#assertSignals(signals);
+
         for (const signal of signals) {
           if (this.watchList.has(signal)) {
             continue;
@@ -300,6 +342,11 @@ export namespace Signal {
       }
 
       unwatch(...signals: AnySignal[]): void {
+        if (!isWatcher(this)) {
+          throw new TypeError('Called unwatch without Watcher receiver');
+        }
+        this.#assertSignals(signals);
+
         for (const signal of signals) {
           const link = this.watchList.get(signal);
           if (link === undefined) {
@@ -312,6 +359,9 @@ export namespace Signal {
       }
 
       getPending() {
+        if (!isWatcher(this)) {
+          throw new TypeError('Called getPending without Watcher receiver');
+        }
         const arr: AnySignal[] = [];
         for (let link = this.deps; link !== undefined; link = link.nextDep) {
           const source = link.dep;
@@ -327,20 +377,36 @@ export namespace Signal {
     }
 
     export function hasSinks(signal: AnySignal) {
+      if (!isComputed(signal) && !isState(signal)) {
+        throw new TypeError('Called hasSinks without a Signal argument');
+      }
       return signal.watchCount > 0;
     }
 
-    export function introspectSinks(signal: AnySignal) {
-      const arr: (Computed | subtle.Watcher)[] = [];
+    export function hasSources(signal: AnySink) {
+      if (!isComputed(signal) && !isWatcher(signal)) {
+        throw new TypeError('Called hasSources without a Computed or Watcher argument');
+      }
+      return signal.depsTail !== undefined;
+    }
+
+    export function introspectSinks(signal: AnySignal): AnySink[] {
+      if (!isComputed(signal) && !isState(signal)) {
+        throw new TypeError('Called introspectSinks without a Signal argument');
+      }
+      const arr: AnySink[] = [];
       for (let link = signal.subs; link !== undefined; link = link.nextSub) {
-        arr.push(link.sub as Computed | subtle.Watcher);
+        arr.push(link.sub as AnySink);
       }
       return arr;
     }
 
-    export function introspectSources(signal: ReactiveNode) {
+    export function introspectSources(sink: AnySink): AnySignal[] {
+      if (!isComputed(sink) && !isWatcher(sink)) {
+        throw new TypeError('Called introspectSources without a Computed or Watcher argument');
+      }
       const arr: AnySignal[] = [];
-      for (let link = signal.deps; link !== undefined; link = link.nextDep) {
+      for (let link = sink.deps; link !== undefined; link = link.nextDep) {
         arr.push(link.dep as AnySignal);
       }
       return arr;

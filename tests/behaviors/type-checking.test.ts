@@ -1,8 +1,6 @@
 import {describe, expect, it} from 'vitest';
 import {Signal} from '../../src/alien.js';
 
-const isAlien = true;
-
 describe('Expected class shape', () => {
   it('should be on the prototype', () => {
     expect(typeof Signal.State.prototype.get).toBe('function');
@@ -14,7 +12,7 @@ describe('Expected class shape', () => {
   });
 });
 
-describe.skipIf(isAlien)('type checks', () => {
+describe('type checks', () => {
   it('checks types in methods', () => {
     let x = {};
     let s = new Signal.State(1);
