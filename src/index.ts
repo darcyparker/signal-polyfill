@@ -55,7 +55,7 @@ export namespace Signal {
     queuedEffectsLength = 0;
   }
 
-  class _State<T = any> implements ReactiveNode {
+  class _State<T = any> implements ReactiveNode, State<T> {
     subs: Link | undefined = undefined;
     subsTail: Link | undefined = undefined;
     flags: ReactiveFlags = ReactiveFlags.None;
@@ -138,11 +138,11 @@ export namespace Signal {
     set(value: T): void;
   }
 
-  export const State = _State as {
+  export const State: {
     new <T>(value: T, options?: Options<T>): State<T>;
-  };
+  } = _State;
 
-  class _Computed<T = any> implements ReactiveNode {
+  class _Computed<T = any> implements ReactiveNode, Computed<T> {
     subs: Link | undefined = undefined;
     subsTail: Link | undefined = undefined;
     deps: Link | undefined = undefined;
@@ -272,11 +272,11 @@ export namespace Signal {
     get(): T;
   }
 
-  export const Computed = _Computed as {
+  export const Computed: {
     new <T>(getter: () => T, options?: Options<T>): Computed<T>;
-  };
+  } = _Computed;
 
-  class _Watcher implements ReactiveNode {
+  class _Watcher implements ReactiveNode, subtle.Watcher {
     deps: Link | undefined = undefined;
     depsTail: Link | undefined = undefined;
     flags = ReactiveFlags.Watching;
@@ -379,9 +379,9 @@ export namespace Signal {
       getPending(): AnySignal<any>[];
     }
 
-    export const Watcher = _Watcher as {
+    export const Watcher: {
       new (fn: () => void): Watcher;
-    };
+    } = _Watcher;
 
     export function hasSinks(signal: AnySignal) {
       if (!isComputed(signal) && !isState(signal)) {
