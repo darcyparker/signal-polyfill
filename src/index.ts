@@ -55,14 +55,6 @@ export namespace Signal {
     queuedEffectsLength = 0;
   }
 
-  function purgeDeps(sub: ReactiveNode) {
-    const depsTail = sub.depsTail as Link | undefined;
-    let toRemove = depsTail !== undefined ? depsTail.nextDep : sub.deps;
-    while (toRemove !== undefined) {
-      toRemove = unlink(toRemove, sub);
-    }
-  }
-
   class _State<T = any> implements ReactiveNode, State<T> {
     subs: Link | undefined = undefined;
     subsTail: Link | undefined = undefined;
@@ -262,19 +254,17 @@ export namespace Signal {
         }
         return false;
       } finally {
-        if (this.watchCount) {
-          for (
-            let link = this.depsTail !== undefined ? (this.depsTail as Link).nextDep : this.deps;
-            link !== undefined;
-            link = link.nextDep
-          ) {
-            const dep = link.dep as _AnySignal;
+        const watched = !!this.watchCount;
+        let toRemove = this.depsTail !== undefined ? (this.depsTail as Link).nextDep : this.deps;
+        while (toRemove !== undefined) {
+          if (watched) {
+            const dep = toRemove.dep as _AnySignal;
             dep.onUnwatched();
           }
+          toRemove = unlink(toRemove, this);
         }
         activeSub = prevSub;
         this.flags &= ~(4 satisfies ReactiveFlags.RecursedCheck);
-        purgeDeps(this);
       }
     }
   }
