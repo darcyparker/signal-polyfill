@@ -16,30 +16,30 @@ export namespace Signal {
     Queued = 1 << 6,
   }
 
-  const {link, unlink, propagate, checkDirty, endTracking, startTracking, shallowPropagate} =
-    createReactiveSystem({
-      update(node: _Computed) {
-        return node.update();
-      },
-      notify(node: _Watcher) {
-        const flags = node.flags;
-        if (!(flags & EffectFlags.Queued)) {
-          node.flags = flags | EffectFlags.Queued;
-          queuedEffects[queuedEffectsLength++] = node;
-        }
-      },
-      unwatched(node) {
-        let toRemove = node.deps;
-        if (toRemove !== undefined) {
-          do {
-            toRemove = unlink(toRemove, node);
-          } while (toRemove !== undefined);
-          node.flags |= ReactiveFlags.Dirty;
-        }
-      },
-    });
+  const {link, unlink, propagate, checkDirty, shallowPropagate} = createReactiveSystem({
+    update(node: _Computed) {
+      return node.update();
+    },
+    notify(node: _Watcher) {
+      const flags = node.flags;
+      if (!(flags & EffectFlags.Queued)) {
+        node.flags = flags | EffectFlags.Queued;
+        queuedEffects[queuedEffectsLength++] = node;
+      }
+    },
+    unwatched(node) {
+      let toRemove = node.deps;
+      if (toRemove !== undefined) {
+        do {
+          toRemove = unlink(toRemove, node);
+        } while (toRemove !== undefined);
+        node.flags |= ReactiveFlags.Dirty;
+      }
+    },
+  });
   const queuedEffects: (_Watcher | undefined)[] = [];
 
+  let cycle = 0;
   let notifyIndex = 0;
   let queuedEffectsLength = 0;
   let activeSub: ReactiveNode | undefined;
@@ -53,6 +53,14 @@ export namespace Signal {
     }
     notifyIndex = 0;
     queuedEffectsLength = 0;
+  }
+
+  function purgeDeps(sub: ReactiveNode) {
+    const depsTail = sub.depsTail as Link | undefined;
+    let toRemove = depsTail !== undefined ? depsTail.nextDep : sub.deps;
+    while (toRemove !== undefined) {
+      toRemove = unlink(toRemove, sub);
+    }
   }
 
   class _State<T = any> implements ReactiveNode, State<T> {
@@ -102,7 +110,7 @@ export namespace Signal {
       }
       if (activeSub !== undefined) {
         const lastLink = this.subsTail;
-        link(this, activeSub);
+        link(this, activeSub, cycle);
         const newLink = this.subsTail!;
         if (newLink !== lastLink) {
           const newSub = newLink.sub;
@@ -216,7 +224,7 @@ export namespace Signal {
       }
       if (activeSub !== undefined) {
         const lastLink = this.subsTail;
-        link(this, activeSub);
+        link(this, activeSub, cycle);
         const newLink = this.subsTail!;
         if (newLink !== lastLink) {
           const newSub = newLink.sub;
@@ -234,7 +242,9 @@ export namespace Signal {
     update(): boolean {
       const prevSub = activeSub;
       activeSub = this;
-      startTracking(this);
+      ++cycle;
+      this.depsTail = undefined;
+      this.flags = 5 as ReactiveFlags.Mutable | ReactiveFlags.RecursedCheck;
       const oldValue = this.value;
       try {
         const newValue = this.getter();
@@ -254,7 +264,7 @@ export namespace Signal {
       } finally {
         if (this.watchCount) {
           for (
-            let link = this.depsTail !== undefined ? this.depsTail.nextDep : this.deps;
+            let link = this.depsTail !== undefined ? (this.depsTail as Link).nextDep : this.deps;
             link !== undefined;
             link = link.nextDep
           ) {
@@ -263,7 +273,8 @@ export namespace Signal {
           }
         }
         activeSub = prevSub;
-        endTracking(this);
+        this.flags &= ~(4 satisfies ReactiveFlags.RecursedCheck);
+        purgeDeps(this);
       }
     }
   }
@@ -319,7 +330,7 @@ export namespace Signal {
           continue;
         }
         signal.onWatched();
-        link(signal, this);
+        link(signal, this, 0);
         this.watchList.set(signal, this.depsTail!);
       }
     }
