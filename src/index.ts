@@ -1,9 +1,4 @@
-import {
-  ReactiveFlags,
-  createReactiveSystem,
-  type ReactiveNode,
-  type Link,
-} from 'alien-signals/system';
+import {createReactiveSystem, type Link, ReactiveFlags, type ReactiveNode} from './system';
 
 export namespace Signal {
   export let isState: (s: any) => s is State<any>,
@@ -12,20 +7,19 @@ export namespace Signal {
 
   const WATCHER_PLACEHOLDER = Symbol('watcher') as any;
 
-  const enum EffectFlags {
-    Queued = 1 << 6,
-  }
+  let cycle = 0;
+  let notifyIndex = 0;
+  let queuedLength = 0;
+  let activeSub: ReactiveNode | undefined;
 
+  const queued: (_Watcher | undefined)[] = [];
   const {link, unlink, propagate, checkDirty, shallowPropagate} = createReactiveSystem({
     update(node: _Computed) {
       return node.update();
     },
     notify(node: _Watcher) {
-      const flags = node.flags;
-      if (!(flags & EffectFlags.Queued)) {
-        node.flags = flags | EffectFlags.Queued;
-        queuedEffects[queuedEffectsLength++] = node;
-      }
+      queued[queuedLength++] = node;
+      node.flags &= ~ReactiveFlags.Watching;
     },
     unwatched(node) {
       let toRemove = node.deps;
@@ -37,22 +31,24 @@ export namespace Signal {
       }
     },
   });
-  const queuedEffects: (_Watcher | undefined)[] = [];
-
-  let cycle = 0;
-  let notifyIndex = 0;
-  let queuedEffectsLength = 0;
-  let activeSub: ReactiveNode | undefined;
 
   function flush(): void {
-    while (notifyIndex < queuedEffectsLength) {
-      const effect = queuedEffects[notifyIndex]!;
-      queuedEffects[notifyIndex++] = undefined;
-      effect.flags &= ~EffectFlags.Queued;
-      effect.run();
+    try {
+      while (notifyIndex < queuedLength) {
+        const effect = queued[notifyIndex]!;
+        queued[notifyIndex++] = undefined;
+        effect.flags |= ReactiveFlags.Watching;
+        effect.run();
+      }
+    } finally {
+      while (notifyIndex < queuedLength) {
+        const effect = queued[notifyIndex]!;
+        queued[notifyIndex++] = undefined;
+        effect.flags |= ReactiveFlags.Watching | ReactiveFlags.Recursed;
+      }
+      notifyIndex = 0;
+      queuedLength = 0;
     }
-    notifyIndex = 0;
-    queuedEffectsLength = 0;
   }
 
   class _State<T = any> implements ReactiveNode, State<T> {
