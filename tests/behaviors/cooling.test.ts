@@ -4,12 +4,25 @@ import {Signal} from '../../src';
 const microtask = () => Promise.resolve();
 
 /**
- * Cooling (polyfill-layer GC restoration). alien's push core retains a forward
- * edge from a source to every computed that read it; a never-watched computed
- * that is dropped therefore leaks. Cooling parks standalone-read computeds and
- * detaches their dep edges on the next microtask so they become GC-able —
- * restoring the proposal's guarantee. It is asynchronous (microtask), so the
- * edge exists synchronously and is gone after a microtask.
+ * Cooling — a polyfill-layer attempt to restore the proposal's guarantee that an
+ * unwatched computed is garbage-collectable. alien's push core keeps a strong
+ * forward edge from a source to every computed that read it (by design —
+ * stackblitz/alien-signals#79), so a never-watched computed that is dropped is
+ * retained. Cooling parks a standalone-read computed and detaches its dep edges
+ * on the next microtask, so it becomes collectable.
+ *
+ * IMPORTANT — this restoration is ASYNCHRONOUS, and necessarily so: a push-based
+ * engine cannot detach synchronously without breaking memoization (a same-tick
+ * re-read would recompute; see `pruning.test.ts`). So the forward edge still
+ * exists synchronously and is gone only after a microtask. That is weaker than
+ * the poll polyfill, which never creates the edge at all (synchronous /
+ * structural — "unwatched signals don't create such edges", alxhub,
+ * proposal-signals/signal-polyfill#44 comment-2588178926).
+ *
+ * These tests therefore DOCUMENT the async behavior; they do not assert that it
+ * satisfies the proposal. Whether async GC-ability is acceptable for the polyfill
+ * — given a native implementation could do this synchronously — is an open
+ * question for the maintainers.
  */
 describe('unwatched-computed cooling', () => {
   it('synchronously the edge still exists (push core), gone after a microtask', async () => {
